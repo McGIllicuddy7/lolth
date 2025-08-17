@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 #define REFLECT_STRINGIFY1(S) (#S)
 #define REFLECT_STRINGIFY(S) (REFLECT_STRINGIFY1(S))
 typedef enum{
@@ -108,6 +109,45 @@ typedef struct{
 	out.field = &ref.data->fields[idx];
 	return out;
 }
+[[maybe_unused]] static bool reflect_is_int(RValue v){
+	if(v.vt == REFLECT_I8){
+		return true;
+	}else if(v.vt == REFLECT_I16){
+		return true;
+	}else if(v.vt == REFLECT_I32){
+		return true;
+	}else if(v.vt == REFLECT_I64){
+		return true;
+	}else{
+		return false;
+	}
+}
+[[maybe_unused]] static bool reflect_is_uint(RValue v){
+	if(v.vt == REFLECT_U8){
+		return true;
+	}else if(v.vt == REFLECT_U16){
+		return true;
+	}else if(v.vt == REFLECT_U32){
+		return true;
+	}else if(v.vt == REFLECT_U64){
+		return true;
+	}else{
+		return false;
+	}
+}
+[[maybe_unused]] static bool reflect_is_ptr(RValue v){
+	if(v.vt == REFLECT_PTR){
+		return true;
+	} else{
+		return false;
+	}
+}
+[[maybe_unused]] static bool reflect_is_struct(RValue v){
+	return v.vt == REFLECT_STRUCT;
+}
+[[maybe_unused]] static bool reflect_is_c_str(RValue v){
+	return v.vt == REFLECT_C_STRING;
+}
 [[maybe_unused]] static Reflection reflect_get_struct(RValue v){
 	if(v.vt == REFLECT_STRUCT){
 		Reflection out;
@@ -172,67 +212,56 @@ typedef struct{
 		return (Reflection){0};
 	}
 }
-[[maybe_unused]] static bool reflect_is_int(RValue v){
-	if(v.vt == REFLECT_I8){
-		return true;
-	}else if(v.vt == REFLECT_I16){
-		return true;
-	}else if(v.vt == REFLECT_I32){
-		return true;
-	}else if(v.vt == REFLECT_I64){
-		return true;
-	}else{
-		return false;
-	}
-}
-[[maybe_unused]] static bool reflect_is_uint(RValue v){
-	if(v.vt == REFLECT_U8){
-		return true;
-	}else if(v.vt == REFLECT_U16){
-		return true;
-	}else if(v.vt == REFLECT_U32){
-		return true;
-	}else if(v.vt == REFLECT_U64){
-		return true;
-	}else{
-		return false;
-	}
-}
-[[maybe_unused]] static bool reflect_is_ptr(RValue v){
-	if(v.vt == REFLECT_PTR){
-		return true;
-	} else{
-		return false;
-	}
-}
-[[maybe_unused]] static bool reflect_is_struct(RValue v){
-	return v.vt == REFLECT_STRUCT;
-}
-[[maybe_unused]] static bool reflect_is_c_str(RValue v){
-	return v.vt == REFLECT_C_STRING;
-}
+
 [[maybe_unused]] static const char * reflect_get_c_str(RValue v){
 	if(v.vt == REFLECT_C_STRING){
 		return *(const char**)v.ptr;
 	}
 	return 0;
 }
-[[maybe_unused]] static bool reflect_is_pod(RValue v){
-	if(v.vt == REFLECT_PTR){
-		return false;
-	}else if(v.vt == REFLECT_STRUCT){
-		Reflection r = reflect_get_struct(v);
-		for(size_t i =0; i<r.data->field_count; i++){
-			RValue f = reflect_get(r, i);
-			if(!reflect_is_pod(f)){
-				return false;
-			}
-		}
-		return true;
-	}else if(v.vt == REFLECT_C_STRING){
-		return false;
-	}else if(v.vt == REFLECT_ARRAY){
-		
+[[maybe_unused]] static void reflect_set_int(RValue v, long a){
+	if(v.vt == REFLECT_I8){
+		*(char*)v.ptr = a;
+	}else if(v.vt == REFLECT_I16){
+		*(short*)v.ptr = a;
+	}else if(v.vt == REFLECT_I32){
+		*(int*)v.ptr = a;
+	}else if(v.vt == REFLECT_I64){
+		*(long*)v.ptr = a;
 	}
-
 }
+[[maybe_unused]] static void reflect_set_uint(RValue v, unsigned long a){
+	if(v.vt == REFLECT_U8){
+		*(unsigned char*)v.ptr = a;
+	}else if(v.vt == REFLECT_U16){
+		*(unsigned short*)v.ptr = a;
+	}else if(v.vt == REFLECT_U32){
+		*(unsigned int*)v.ptr = a;
+	}else if(v.vt == REFLECT_U64){
+		*(unsigned long*)v.ptr = a;
+	}
+}
+[[maybe_unused]] static void reflect_set_float(RValue v, double a){
+	if(v.vt == REFLECT_F32){
+		*(float*)v.ptr = a;
+	}else if(v.vt == REFLECT_F64){
+		*(double*)v.ptr = a;
+	}
+}
+[[maybe_unused]] static void reflect_set_c_str(RValue v, const char * ptr){ 
+	if(v.vt == REFLECT_C_STRING){
+		*(const char**)v.ptr = ptr;
+	}
+}
+[[maybe_unused]] static void reflect_set_ptr(RValue v, void * ptr){
+	if(v.vt == REFLECT_PTR){
+		*(void**)v.ptr = ptr;
+	}
+}
+[[maybe_unused]] static void reflect_set_struct(RValue v, void * ptr, size_t size){
+	if(v.vt == REFLECT_STRUCT){
+		memcpy(v.ptr, ptr, size);
+	}
+}
+[[maybe_unused]]
+
