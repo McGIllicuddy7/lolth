@@ -36,7 +36,7 @@ static void give_up_globals(){
 	pthread_mutex_unlock(&tasks_lock);
 }
 #define TASK_MAX_COUNT 16384
-#define THREAD_COUNT 1
+#define THREAD_COUNT 3
 thread_local size_t current_task = 0;
 thread_local size_t thread_id =0;
 context_t tasks[TASK_MAX_COUNT] = {0};
@@ -45,35 +45,41 @@ context_t * get_context(){
 	return &tasks[current_task];
 }
 void lolth_runtime_update(){
+	take_globals();
 	assert(locked);
 	int gt = -1;
 	context_t * prev = get_context();
 	prev->active = false;
 //	printf("current task:%zu\n",current_task);
+	printf("thread id:%zu\n", thread_id);
 	for(int i =1; i<TASK_MAX_COUNT+1; i++){
 		int x = (i+current_task)%TASK_MAX_COUNT;
-		if(x<THREAD_COUNT+1 && x != thread_id){
+		
+		if(x<=THREAD_COUNT+1 && x != thread_id){
 			continue;
 		}
-		if(tasks[x].runnable && !tasks[i].active){
-			if(tasks[x].awaiting){
+		if(tasks[x].runnable && !tasks[x].active){
+			if(tasks[x].sp || !tasks[x].bp){continue;}
+			/*if(tasks[x].awaiting){
 				if(!tasks[i].waiter.check(&tasks[i].waiter)){
 					continue;
 				}
-			}
+			}*/
 			#ifdef TASK_DEBUG
 			printf("thread:%zu switching task to %d\n", thread_id,x);
 			#endif
 			current_task = x;	
 			tasks[x].active = true;
+//			give_up_globals();
 			context_switch(prev,&tasks[x]);	
+//			take_globals();
 			break;
 		}
 	}
 	for(int i =0; i<TASK_MAX_COUNT; i++){
 		if(!tasks[i].runnable){
 			if(i == current_task){
-				printf("error running unrunnable task\n");
+				printf("error running unrunnable task:%d\n", i);
 				abort();
 			}	
 			if(tasks[i].stack_ptr){
@@ -82,14 +88,21 @@ void lolth_runtime_update(){
 			}
 		}
 	}		
+	if(current_task == thread_id){
+	}
+	give_up_globals();
 }
 void deschedule_current_task(){
 	take_globals();
 	#ifdef TASK_DEBUG
 	printf("descheduling %zu\n", current_task);
+	if(current_task<=THREAD_COUNT+1){
+		__builtin_trap();
+	}
 	#endif
 	get_context()->runnable = false;
 	get_context()->active = false;
+	give_up_globals();
 	lolth_runtime_update();
 	while(true){
 		print_unreachable();
@@ -99,7 +112,7 @@ void deschedule_current_task(){
 task_handle_t task_spawn(void(*to_run)(void*), void* args){	
 	take_globals();
 	int tidx =-1;
-	for(int i = 0; i<TASK_MAX_COUNT; i++){
+	for(int i = THREAD_COUNT+2; i<TASK_MAX_COUNT; i++){
 		if(!tasks[i].runnable){
 			tidx = i;
 			break;
@@ -122,23 +135,20 @@ task_handle_t task_spawn(void(*to_run)(void*), void* args){
 	cur->active = true;
 	memset(&cur->waiter, 0, sizeof(cur->waiter));
 	cur->stack_ptr = (char*)cur->sp-4096;		
-	context_spawn(prev, cur, to_run, args);
 	give_up_globals();
+	context_spawn(prev, cur, to_run, args);
+	
 	return tidx;
 }
 void yield(){
-	if(thread_id == 0){
+	/*if(thread_id == 0){
 		return;
-	}
-	take_globals();
-	lolth_runtime_update();
-	give_up_globals();
+	}*/	
+	lolth_runtime_update();	
 }
 void spawn_rt_thread(size_t idx){
 	size_t * t = (size_t*)malloc(sizeof(idx));
 	*t = idx;
-	get_context()->active = true;
-	get_context()->runnable= true;
 	pthread_create(&threads[*t], 0,lolth_runtime,t);
 	return;
 }
@@ -149,12 +159,12 @@ void lolth_init(){
 	memset(tasks,0, sizeof(tasks));
 	thread_id =0;
 	for(int i =0; i<THREAD_COUNT; i++){
-		current_task = i+1;
 		spawn_rt_thread(i);
 	}
 	current_task =0;
 	thread_id =0;
 	tasks[0].runnable = true;
+	tasks[0].active = false;
 	tasks[0].awaiting = false;
 	pthread_mutex_unlock(&tasks_lock);
 }
@@ -173,9 +183,14 @@ void *lolth_runtime(void*args){
 	size_t * t = (size_t*)args;
 	current_task = *t+1;
 	thread_id = *t+1;
+	get_context()->runnable = true;
+	get_context()->active = false;
+
 	while(runtime_active){
-		printf("pooled current task current_task:%zu\n", current_task);
+		get_context()->active = false;
+//		printf("pooled current task current_task:%zu\n", current_task);
 		yield();
+		sleep(1);
 	}
 	return 0;
 }
