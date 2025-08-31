@@ -1,47 +1,45 @@
-/*
-typedef struct {
-	void * bp;
-	void * sp;
-	void * ret;
-	bool runnable;
-	void * stack_ptr;
-	void * waiter_data;
-	bool (*wait)(void*);
-}context_t;
-*/
-.global _context_spawn ;void context_spawn(context_t * prev, context_t * to_switch_to, void(*to_run)(void* args), void * args)
-.global _context_switch ; void context_switch(context_t * prev, context_t * to_switch_to
-.global _debug_stack_ptr ;void * debug_stack_ptr ()
-.global _debug_frame_ptr ; void * debug_frame_ptr()
-.extern _context_spawn_thunk; 
 
-_debug_stack_ptr:
-	mov x0, sp
+.intel_syntax 
+.global context_spawn
+.global context_switch
+.global debug_stack_ptr
+.global debug_frame_ptr
+.extern context_spawn_thunk
+.extern _printf
+
+debug_stack_ptr:
+	mov %rax, %rsp
+	ret
+debug_frame_ptr:
+	mov %rax, %rbp
 	ret
 
-_debug_frame_ptr:
-	mov x0, fp
+context_spawn:	
+	push %rbp
+	mov %rbp,%rsp
+	mov [%rax], %rbp
+	mov [%rax+8], %rsp
+	mov %r10, [%rbp-8]
+	mov [%rax+16], %r10
+	mov %rbp, [%rbx]
+	mov %rsp, [%rbx+8]
+	call context_spawn_thunk
+	mov %rsp, %rbp
+	pop %rbp
 	ret
 
-_context_spawn:	
-	str fp, [x0]
-	mov x10, sp
-	str x10, [x0, #8]
-	str lr, [x0, #16]
-	mov x10, #0
-	str x10, [x1, #16]
-	ldr fp, [x1]
-	ldr x10, [x1, #8]
-	mov sp, x10
-	bl _context_spawn_thunk
+context_switch:
+	push %rbp
+	mov %rbp,%rsp
+	mov [%rax], %rbp
+	mov [%rax+8],%rsp
+	mov %r10, [%rbp-8]
+	mov [%rax+16],%r10
+	mov %rbp, [%rbx]
+	mov %rsp, [%rbx+8]
+	mov %rsp, %rbp
+	pop %rbp
+	mov %r10, [%rbx+16]
+	jmp %r10
 	ret
-_context_switch:
-	str fp, [x0]
-	mov x10, sp
-	str x10, [x0, #8]
-	str lr, [x0, #16]
-	ldr fp, [x1, #0]
-	ldr x10, [x1, #8]
-	mov sp, x10
-	ldr lr, [x1, #16]
-	ret
+

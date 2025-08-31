@@ -22,11 +22,12 @@ void test(void*ptr ){
 		yield();
 	}		
 }
-int main(){
+void old_main(){
 	lolth_init();
 	task_handle_t tsks[100] = {0};
 	for(int i =0; i<10; i++){
 		tsks[i] = task_spawn(test,0);
+		printf("spawned\n");
 	}
 	for(int i =0; i<10; i++){	
 		printf("context?\n");
@@ -35,4 +36,9 @@ int main(){
 	printf("%zu, %zu\n",counter, current_task);
 	exit(0);
 
+}
+context_t a;
+context_t b;
+int main(){
+	context_spawn(&a, &b, test,0);
 }

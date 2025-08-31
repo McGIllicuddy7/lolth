@@ -36,7 +36,7 @@ static void give_up_globals(){
 	pthread_mutex_unlock(&tasks_lock);
 }
 #define TASK_MAX_COUNT 16384
-#define THREAD_COUNT 3
+#define THREAD_COUNT 0
 thread_local size_t current_task = 0;
 thread_local size_t thread_id =0;
 context_t tasks[TASK_MAX_COUNT] = {0};
@@ -185,7 +185,6 @@ void *lolth_runtime(void*args){
 	thread_id = *t+1;
 	get_context()->runnable = true;
 	get_context()->active = false;
-
 	while(runtime_active){
 		get_context()->active = false;
 //		printf("pooled current task current_task:%zu\n", current_task);
