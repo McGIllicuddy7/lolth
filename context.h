@@ -1,5 +1,6 @@
 #pragma once
 #include <stdio.h>
+//jump orientated programming
 typedef struct waiter_t{
 	void *data;
 	void (*aborter)(struct waiter_t*);
