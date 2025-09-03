@@ -1,6 +1,7 @@
 #pragma once
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 typedef enum{
 	PollFinished, 
 	PollWait,
@@ -12,6 +13,8 @@ typedef struct name##Args args name##Args;\
 typedef struct name##Vars vars name##Vars;\
 typedef struct name##Future{out returned; name##Args ag; name##Vars vs;long state;Poll(*poll)(struct name##Future*f, name##Args * a, name##Vars * vs);}name##Future;\
 Poll name##Poll(name##Future* fut, name##Args*a, name##Vars*v){\
+	(void)a;\
+	(void)v;\
 	switch(fut->state){\
 		case ASYNC_FINISHED: \
 			return PollFinished;\
@@ -21,7 +24,8 @@ Poll name##Poll(name##Future* fut, name##Args*a, name##Vars*v){\
 	}\
 }\
 Poll name##InterfacePoll(void *ptr){\
-	return \
+	name##Future* fut = (name##Future*)ptr;\
+	return (fut->poll)(fut, &fut->ag, &fut->vs);\
 }\
 name##Future name (name##Args ag){\
 	name##Future ret;\
@@ -36,4 +40,5 @@ name##Future name (name##Args ag){\
 #define await_eq(l,f, args) fut->state = __LINE__; case __LINE__: if((f).poll(&f, &f.ag, &f.vs)== PollWait) return PollWait; l = f.out;
 #define yield() fut->state = __LINE__; return PollWait;case __LINE__:(void)(fut); 
 #define poll(f) ((f).poll(&f, &f.ag, &f.vs) == PollWait)
-#define spawn(f,args...) spawn_future(f(args...))
+
+void spawn_task(void * ptr, size_t size);

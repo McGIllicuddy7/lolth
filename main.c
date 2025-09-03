@@ -31,5 +31,6 @@ int main(){
 	while(poll(t)){
 		printf("testing 123\n");
 	}
+	spawn(test((testArgs){}));
 	return 0;
 }
