@@ -4,33 +4,23 @@ async(int, test, {}, {int i;},
       { 
 	for(v->i=0; v->i<10; v->i++){
 		printf("%d\n",v->i);
-		yield();
+		lolth_yield();
 	}
 	return PollFinished;
-      }
-);
-async(int, test_spawn, {}, {int i;testFuture futs[10]; bool finished;},
-      {
-	for(v->i =0; v->i<10; v->i++){
-		v->futs[v->i] = test((testArgs){});
-	}
-	do {	
-		v->finished=true;
-		for(v->i =0; v->i<10; v->i++){
-			printf("%d:", v->i);
-			if(poll(v->futs[v->i])){
-				v->finished = false;
-			}
-		}
-	}while(!v->finished);
-		return PollFinished;
 	}
 )
+async(int, async_main, {}, {}, 
+      {
+	printf("spawned\n");
+	async_spawn(test,(testArgs){});
+	printf("spawned 1\n");
+	async_spawn(test,(testArgs){});
+	printf("spawned 2\n");
+	return PollFinished;
+      }
+)
+
 int main(){
-	test_spawnFuture t= test_spawn((test_spawnArgs){});
-	while(poll(t)){
-		printf("testing 123\n");
-	}
-	spawn(test((testArgs){}));
+	spawn_blocking(async_main, (async_mainArgs){});
 	return 0;
 }
