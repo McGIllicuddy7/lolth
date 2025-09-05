@@ -13,27 +13,24 @@ void lolth_spawn_task(AsyncContext * asyncon,AsyncTask task){
 void lolth_spawn_blocking(AsyncTask task){
 	AsyncContext context = create_context();
 	lolth_spawn_task(&context, task);
-	while(context.tasks){
+	context.to_run = context.tasks;
+	context.tasks =0;
+	while(context.to_run){
 		AsyncTask * prev = 0;
-		AsyncTask * ptr = context.tasks;
+		AsyncTask * ptr = context.to_run;
 		while(ptr){
-			if(ptr->poll(&context,ptr->data) == PollFinished){
-				printf("polled finished\n");
-				if(prev){
-					prev->next = ptr->next;
-				}else{
-					context.tasks= ptr->next;
-				}
-				AsyncTask *old = ptr;
-				ptr = ptr->next;
-				free(old->data);
-				free(old);
+			if(ptr->poll(&context,ptr->data) != PollFinished){
+				AsyncTask * next = ptr->next;
+				ptr->next = context.tasks;
+				context.tasks = ptr;
+				ptr = next;
 			}else{
-				printf("polled\n");
-				prev = ptr;
 				ptr = ptr->next;
 			}
+		
 		}
+		context.to_run = context.tasks;
+		context.tasks = 0;
 	}
 }
 

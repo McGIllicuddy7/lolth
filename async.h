@@ -17,6 +17,7 @@ typedef struct AsyncTask{
 }AsyncTask;
 typedef struct AsyncContext{
 	AsyncTask * tasks;
+	AsyncTask * to_run;
 } AsyncContext;
 #define async(out, name, args,vars,instructions)\
 typedef struct name##Args args name##Args;\
@@ -63,4 +64,3 @@ AsyncTask name##virtual(name##Args ag) {\
 void lolth_spawn_task(AsyncContext * asyncon,AsyncTask task);
 #define spawn_blocking(name, args...) lolth_spawn_blocking(name##virtual(args))
 void lolth_spawn_blocking(AsyncTask task);
-
