@@ -12,7 +12,7 @@ static pthread_mutex_t lock;
 #define WORKER_COUNT 7
 static pthread_t workers[WORKER_COUNT] = {0};
 #define TASK_COUNT 4096
-static context_t tasks[TASK_COUNT] = {0};
+static thread_local context_t tasks[TASK_COUNT] = {0};
 static volatile bool run_tasks = true;
 thread_local long task_id = 0;
 thread_local long cpu_id = 0;
