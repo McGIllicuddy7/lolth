@@ -35,3 +35,12 @@ void lolth_spawn_blocking(AsyncTask task){
 }
 
 
+void begin_async_read(struct aiocb * out,FILE * file, char * buf,size_t count){
+	memset(out, 0, sizeof(*out));
+	out->aio_buf = buf;
+	out->aio_nbytes = count;
+	out->aio_fildes = fileno(file);
+	aio_read(out);
+}
+
+

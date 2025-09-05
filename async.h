@@ -2,7 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-
+#include <stdio.h>
+#include <aio.h>
 typedef enum{
 	PollFinished, 
 	PollWait,
@@ -64,3 +65,5 @@ AsyncTask name##virtual(name##Args ag) {\
 void lolth_spawn_task(AsyncContext * asyncon,AsyncTask task);
 #define spawn_blocking(name, args...) lolth_spawn_blocking(name##virtual(args))
 void lolth_spawn_blocking(AsyncTask task);
+void begin_async_read(struct aiocb * out,FILE * file, char * buf,size_t count);
+
