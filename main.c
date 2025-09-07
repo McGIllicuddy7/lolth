@@ -34,7 +34,15 @@ int main(){
 		lolth_await(h[i]);
 	}	
 	printf("exit success count:%d\n",c);
-	lolth_finish();
 	printf("howdy nerds\n");
+	int i =0;
+	while(true){
+		++i;	
+		if(i>10000){
+			break;
+		}	
+	}
+	lolth_finish();
+
 	return 0;
 }

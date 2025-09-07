@@ -12,7 +12,7 @@ typedef struct {
 	bool running;
 }Task;
 volatile atomic_bool threads_should_continue = false;
-#define TASK_COUNT (4096*4)
+#define TASK_COUNT (4096)
 #define THREAD_COUNT 16
 Task tasks [TASK_COUNT] = {0};
 _Thread_local long current_task =0;
@@ -20,7 +20,9 @@ _Thread_local long prev_running =-1;
 _Thread_local long thread_id =0;
 pthread_mutex_t task_lock;
 pthread_t threads[THREAD_COUNT-1];
+jmp_buf tsaves[THREAD_COUNT-1];
 atomic_bool ready_to_finish[THREAD_COUNT-1] = {0};
+extern void usleep(long);
 Task * get_current_task(){
 	return &tasks[current_task];
 }
@@ -100,13 +102,18 @@ void scheduler(bool is_done){
 		if(i != thread_id && i<THREAD_COUNT){
 			continue;
 		}
-		if(tasks[i].valid&& !tasks[i].running){
+		if(tasks[i].valid&& !tasks[i].running || i == current_task){
 			tasks[i].running = true;
 			to_jump_to = i;
 			break;
 		}
 	}		
-
+	if(to_jump_to == -1){
+		if(thread_id != 0){
+			pthread_mutex_unlock(&task_lock);
+			longjmp(tsaves[thread_id-1],0);
+		}
+	}
 	if(current_task == to_jump_to){
 		prev_running = current_task;
 		pthread_mutex_unlock(&task_lock);
@@ -120,9 +127,9 @@ void scheduler(bool is_done){
 	}
 }
 void* thread_loop(void*args){
-	extern void usleep(long);
 	thread_id = (size_t)args;
 	current_task = thread_id;
+	setjmp(tsaves[thread_id-1]);
 	while(threads_should_continue){
 		usleep(5000);
 		yield();			
@@ -150,12 +157,9 @@ void lolth_init(){
 }
 void lolth_finish(){
 	threads_should_continue = false;
-	pthread_mutex_lock(&task_lock);
-	for(int i =THREAD_COUNT; i<TASK_COUNT; i++){
-		tasks[i].valid = false;
-	}
-	bool done = true;
+	bool done = false;
 	while(!done){
+		done = true;
 		for(int i =0; i<THREAD_COUNT-1; i++){
 			if(!ready_to_finish[i]){
 				done = false;
@@ -165,10 +169,11 @@ void lolth_finish(){
 	}
 	for(int i = 0; i<THREAD_COUNT-1; i++){
 		pthread_join(threads[i],0);
-	}
-	sleep(1);
+	}	
+	usleep(5000);
+
 }
-void lolth_await(TaskHandle handle){
+void lolth_await(TaskHandle handle){	
 	while(tasks[handle].valid){
 		yield();		
 	}
