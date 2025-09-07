@@ -12,7 +12,7 @@ typedef struct {
 	bool running;
 }Task;
 volatile atomic_bool threads_should_continue = false;
-#define TASK_COUNT (4096)
+#define TASK_COUNT (16000)
 #define THREAD_COUNT 16
 Task tasks [TASK_COUNT] = {0};
 _Thread_local long current_task =0;
