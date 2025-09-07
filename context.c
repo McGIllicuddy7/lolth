@@ -5,20 +5,22 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <stdatomic.h>
 typedef struct {
 	jmp_buf buf;
 	bool valid;
 	bool running;
 }Task;
-volatile bool threads_should_continue = false;
+volatile atomic_bool threads_should_continue = false;
 #define TASK_COUNT (4096*4)
-#define THREAD_COUNT 8
+#define THREAD_COUNT 16
 Task tasks [TASK_COUNT] = {0};
 _Thread_local long current_task =0;
 _Thread_local long prev_running =-1;
 _Thread_local long thread_id =0;
 pthread_mutex_t task_lock;
 pthread_t threads[THREAD_COUNT-1];
+volatile bool ready_to_finish[THREAD_COUNT-1] = {0};
 Task * get_current_task(){
 	return &tasks[current_task];
 }
@@ -82,6 +84,14 @@ void task_switch(Task*from, Task* to){
 	return;
 }
 void scheduler(bool is_done){
+	if(!threads_should_continue){
+		if(current_task = thread_id){
+			return;
+		}else{
+			current_task = thread_id;
+			longjmp(get_current_task()->buf,0);
+		}
+	}
 	pthread_mutex_lock(&task_lock);
 	get_current_task()->valid = !is_done;
 	int to_jump_to =-1;
@@ -116,6 +126,9 @@ void* thread_loop(void*args){
 		usleep(5000);
 		yield();			
 	}
+	ready_to_finish[thread_id-1]= true;
+	usleep(5000);
+
 	return 0;
 }
 
@@ -137,6 +150,16 @@ void lolth_init(){
 }
 void lolth_finish(){
 	threads_should_continue = false;
+	pthread_mutex_lock(&task_lock);
+	bool done = true;
+	while(!done){
+		for(int i =0; i<THREAD_COUNT-1; i++){
+			if(!ready_to_finish[i]){
+				done = false;
+				break;
+			}
+		}
+	}
 	for(int i = 0; i<THREAD_COUNT-1; i++){
 		pthread_cancel(threads[i]);
 	}

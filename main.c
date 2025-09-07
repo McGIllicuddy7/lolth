@@ -35,5 +35,6 @@ int main(){
 	}	
 	printf("exit success count:%d\n",c);
 	lolth_finish();
+	printf("howdy nerds\n");
 	return 0;
 }
