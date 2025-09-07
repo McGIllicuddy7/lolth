@@ -20,7 +20,7 @@ _Thread_local long prev_running =-1;
 _Thread_local long thread_id =0;
 pthread_mutex_t task_lock;
 pthread_t threads[THREAD_COUNT-1];
-volatile bool ready_to_finish[THREAD_COUNT-1] = {0};
+atomic_bool ready_to_finish[THREAD_COUNT-1] = {0};
 Task * get_current_task(){
 	return &tasks[current_task];
 }
@@ -85,7 +85,7 @@ void task_switch(Task*from, Task* to){
 }
 void scheduler(bool is_done){
 	if(!threads_should_continue){
-		if(current_task = thread_id){
+		if(current_task == thread_id){
 			return;
 		}else{
 			current_task = thread_id;
@@ -106,6 +106,7 @@ void scheduler(bool is_done){
 			break;
 		}
 	}		
+
 	if(current_task == to_jump_to){
 		prev_running = current_task;
 		pthread_mutex_unlock(&task_lock);
@@ -127,8 +128,7 @@ void* thread_loop(void*args){
 		yield();			
 	}
 	ready_to_finish[thread_id-1]= true;
-	usleep(5000);
-
+	printf("thread %ld finished\n",thread_id);
 	return 0;
 }
 
@@ -151,6 +151,9 @@ void lolth_init(){
 void lolth_finish(){
 	threads_should_continue = false;
 	pthread_mutex_lock(&task_lock);
+	for(int i =THREAD_COUNT; i<TASK_COUNT; i++){
+		tasks[i].valid = false;
+	}
 	bool done = true;
 	while(!done){
 		for(int i =0; i<THREAD_COUNT-1; i++){
@@ -161,8 +164,9 @@ void lolth_finish(){
 		}
 	}
 	for(int i = 0; i<THREAD_COUNT-1; i++){
-		pthread_cancel(threads[i]);
+		pthread_join(threads[i],0);
 	}
+	sleep(1);
 }
 void lolth_await(TaskHandle handle){
 	while(tasks[handle].valid){
