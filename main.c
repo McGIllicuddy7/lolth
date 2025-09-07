@@ -4,9 +4,12 @@
 #include <stdlib.h>
 #include "context.h"
 #include <pthread.h>
+#include <stdatomic.h>
+atomic_int c = 0;
 void test(void * arg){	
 	for(int i =0; i<10; i++){
 		printf("testing %d\n",i);
+		c++;
 		yield();
 	}
 
@@ -30,6 +33,6 @@ int main(){
 	for(int i =0; i<10; i++){
 		lolth_await(h[i]);
 	}	
-	printf("exit success\n");
+	printf("exit success count:%d\n",c);
 	return 0;
 }
