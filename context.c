@@ -10,6 +10,7 @@ typedef struct {
 	bool valid;
 	bool running;
 }Task;
+volatile bool threads_should_continue = false;
 #define TASK_COUNT (4096*4)
 #define THREAD_COUNT 8
 Task tasks [TASK_COUNT] = {0};
@@ -17,6 +18,7 @@ _Thread_local long current_task =0;
 _Thread_local long prev_running =-1;
 _Thread_local long thread_id =0;
 pthread_mutex_t task_lock;
+pthread_t threads[THREAD_COUNT-1];
 Task * get_current_task(){
 	return &tasks[current_task];
 }
@@ -110,11 +112,11 @@ void* thread_loop(void*args){
 	extern void usleep(long);
 	thread_id = (size_t)args;
 	current_task = thread_id;
-	while(true){
+	while(threads_should_continue){
 		usleep(5000);
-		yield();	
-		
+		yield();			
 	}
+	return 0;
 }
 
 void lolth_init(){
@@ -125,14 +127,19 @@ void lolth_init(){
 	pthread_mutex_lock(&task_lock);
 	tasks[0].valid = true;
 	tasks[0].running = true;
+	threads_should_continue = true;
 	for(int i =1; i<THREAD_COUNT; i++){
 		tasks[i].valid = true;
 		tasks[i].running = true;
-		pthread_t thread;
-		pthread_create(&thread,0, thread_loop,(void*)i);
+		pthread_create(&threads[i-1],0, thread_loop,(void*)i);
 	}
 	pthread_mutex_unlock(&task_lock);
-
+}
+void lolth_finish(){
+	threads_should_continue = false;
+	for(int i = 0; i<THREAD_COUNT-1; i++){
+		pthread_cancel(threads[i]);
+	}
 }
 void lolth_await(TaskHandle handle){
 	while(tasks[handle].valid){

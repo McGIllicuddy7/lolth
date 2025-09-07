@@ -7,7 +7,7 @@
 #include <stdatomic.h>
 atomic_int c = 0;
 void test(void * arg){	
-	for(int i =0; i<10; i++){
+	for(int i =0; i<1000; i++){
 		printf("testing %d\n",i);
 		c++;
 		yield();
@@ -34,5 +34,6 @@ int main(){
 		lolth_await(h[i]);
 	}	
 	printf("exit success count:%d\n",c);
+	lolth_finish();
 	return 0;
 }
