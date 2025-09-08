@@ -6,12 +6,15 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <aio.h>
 typedef struct {
 	jmp_buf buf;
+	void * stack;
 	bool valid;
 	bool running;
 }Task;
 volatile atomic_bool threads_should_continue = false;
+volatile atomic_bool valid_rt = false;
 #define TASK_COUNT (16000)
 #define THREAD_COUNT 16
 Task tasks [TASK_COUNT] = {0};
@@ -23,12 +26,14 @@ pthread_t threads[THREAD_COUNT-1];
 jmp_buf tsaves[THREAD_COUNT-1];
 atomic_bool ready_to_finish[THREAD_COUNT-1] = {0};
 extern void usleep(long);
+extern int fileno(FILE * f);
 Task * get_current_task(){
 	return &tasks[current_task];
 }
 extern void task_switch(Task* from, Task* to);
 extern void task_spawn_asm(void * stack, void(*to_call)(void*), void* args);
 extern void scheduler(bool is_done);
+extern void context_gc();
 void task_spawn_thunk(void * stack, void(*to_call)(void*), void* args){
 	pthread_mutex_lock(&task_lock);
 	if(prev_running != current_task){
@@ -40,18 +45,30 @@ void task_spawn_thunk(void * stack, void(*to_call)(void*), void* args){
 	scheduler(true);
 	assert(false);
 }
+
 void yield(){
+	if(!valid_rt){
+		return;
+	}
 	scheduler(false);
 }
+
 TaskHandle spawn(void (*to_call)(void*),void * args){
-	void * stack = malloc(4096)+4096;	
-	Task * cur = get_current_task();
+	if(!valid_rt){
+		return -1;
+	}
+	void * stack = malloc(8000);
+	Task * cur = get_current_task();	
 	long tsk = -1;
-	pthread_mutex_lock(&task_lock);
+	pthread_mutex_lock(&task_lock);	
 	for(int i =0; i<TASK_COUNT; i++){
 		if(!tasks[i].valid){
 			tasks[i].valid = true;
 			tasks[i].running = true;
+			if(tasks[i].stack){
+				free(tasks[i].stack);
+			}
+			tasks[i].stack = stack;
 			tsk = i;
 			break;
 		}
@@ -63,7 +80,7 @@ TaskHandle spawn(void (*to_call)(void*),void * args){
 	current_task = tsk;	
 	pthread_mutex_unlock(&task_lock);
 	if(!setjmp(cur->buf)){
-		task_spawn_asm(stack, to_call, args);
+		task_spawn_asm(stack+8000, to_call, args);
 	}	
 	pthread_mutex_lock(&task_lock);
 	if(prev_running != current_task){
@@ -73,6 +90,7 @@ TaskHandle spawn(void (*to_call)(void*),void * args){
 	pthread_mutex_unlock(&task_lock);
 	return tsk;
 }
+
 void task_switch(Task*from, Task* to){		
 	if(!setjmp(from->buf)){
 		longjmp(to->buf, 0);
@@ -85,6 +103,7 @@ void task_switch(Task*from, Task* to){
 	pthread_mutex_unlock(&task_lock);
 	return;
 }
+
 void scheduler(bool is_done){
 	if(!threads_should_continue){
 		if(current_task == thread_id){
@@ -94,6 +113,7 @@ void scheduler(bool is_done){
 			longjmp(get_current_task()->buf,0);
 		}
 	}
+	context_gc();
 	pthread_mutex_lock(&task_lock);
 	get_current_task()->valid = !is_done;
 	int to_jump_to =-1;
@@ -102,7 +122,7 @@ void scheduler(bool is_done){
 		if(i != thread_id && i<THREAD_COUNT){
 			continue;
 		}
-		if(tasks[i].valid&& !tasks[i].running || i == current_task){
+		if(tasks[i].valid&& (!tasks[i].running || i == current_task)){
 			tasks[i].running = true;
 			to_jump_to = i;
 			break;
@@ -126,6 +146,7 @@ void scheduler(bool is_done){
 		task_switch(&tasks[prev],get_current_task());
 	}
 }
+
 void* thread_loop(void*args){
 	thread_id = (size_t)args;
 	current_task = thread_id;
@@ -139,7 +160,7 @@ void* thread_loop(void*args){
 	return 0;
 }
 
-void lolth_init(){
+void lolth_init(){	
 	pthread_mutex_init(&task_lock,0);
 	for(int i =0; i<TASK_COUNT; i++){
 		tasks[i].valid = false;
@@ -151,10 +172,12 @@ void lolth_init(){
 	for(int i =1; i<THREAD_COUNT; i++){
 		tasks[i].valid = true;
 		tasks[i].running = true;
-		pthread_create(&threads[i-1],0, thread_loop,(void*)i);
+		pthread_create(&threads[i-1],0, thread_loop,(void*)(size_t)i);
 	}
+	valid_rt = true;
 	pthread_mutex_unlock(&task_lock);
 }
+
 void lolth_finish(){
 	threads_should_continue = false;
 	bool done = false;
@@ -170,14 +193,89 @@ void lolth_finish(){
 	for(int i = 0; i<THREAD_COUNT-1; i++){
 		pthread_join(threads[i],0);
 	}	
-	usleep(5000);
-
+	valid_rt = false;
 }
+
 void lolth_await(TaskHandle handle){	
+	if(handle == -1){
+		return;
+	}
 	while(tasks[handle].valid){
 		yield();		
 	}
 }
+
+size_t lolth_read(FILE * file, char * buf, size_t count){
+	struct aiocb reader;
+	memset(&reader, 0, sizeof(reader));
+	reader.aio_buf= buf;
+	reader.aio_nbytes = count;
+	reader.aio_fildes = fileno(file);
+	aio_read(&reader);
+	int er = aio_error(&reader);
+	while(er != 0){
+		er = aio_error(&reader);
+		yield();
+	}
+	return aio_return(&reader);
+}
+
+size_t lolth_write(FILE * file, char * buf, size_t count){
+	struct aiocb reader;
+	memset(&reader, 0, sizeof(reader));
+	reader.aio_buf= buf;
+	reader.aio_nbytes = count;
+	reader.aio_fildes = fileno(file);
+	aio_write(&reader);
+	int er = aio_error(&reader);
+	while(er >0){
+		er = aio_error(&reader);
+		yield();
+	}
+	return aio_return(&reader);
+}
+
+String lolth_read_to_string(Arena * arena, const char *fname){
+	FILE * f = fopen(fname, "r");
+	fseek(f, 0,SEEK_END);
+	size_t count = ftell(f);
+	fseek(f, 0, SEEK_SET);
+	char * buff = arena_alloc(arena, count+1);
+	lolth_read(f,buff, count);
+	buff[count] =0;
+	fclose(f);
+	String out;
+	out.items = buff;
+	out.length= count;
+	out.capacity= count;
+	out.arena = arena;
+	return out;
+}
+char lolth_getc(FILE * f){
+}
+String lolth_get_line(Arena * arena, FILE * f){
+
+}
+String lolth_get_until(Arena * arena, FILE * f, Str pat){	
+}
+void lolth_write_to_file(const char* fname, Str to_write){
+}
+void lolth_write_str(FILE * file, Str to_write){
+}
+void context_gc(){
+	pthread_mutex_lock(&task_lock);
+	for(int i =THREAD_COUNT; i<TASK_COUNT; i++){
+		if(!tasks[i].valid && !tasks[i].running){
+			if(!tasks[i].stack){
+				continue;
+			}
+			free(tasks[i].stack);
+			tasks[i].stack = 0;
+		}
+	}
+	pthread_mutex_unlock(&task_lock);
+}
+
 #ifdef __x86_64__
 __asm(
 	".intel_syntax noprefix\n"

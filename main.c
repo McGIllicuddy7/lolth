@@ -1,4 +1,6 @@
 /*#include "async.h"*/
+#define CTILS_IMPLEMENTATION 
+#include "utils.h"
 #include <stdio.h>
 #include <sys/types.h>
 #include <stdlib.h>
@@ -7,7 +9,7 @@
 #include <stdatomic.h>
 atomic_int c = 0;
 void test(void * arg){	
-	for(int i =0; i<1000; i++){
+	for(int i =0; i<10; i++){
 		printf("testing %d\n",i);
 		c++;
 		yield();
@@ -23,26 +25,11 @@ void test_spawn(void *arg){
 		lolth_await(h[i]);
 	}	
 }
+void io_test(void * ptr){
+	printf("%s\n", lolth_read_to_string(0,"main.c").items);
+}
 
 int main(){
-	lolth_init();
-	TaskHandle h[10];
-	for(int i =0; i<10; i++){
-		h[i] =spawn(test_spawn,0);
-	}
-	for(int i =0; i<10; i++){
-		lolth_await(h[i]);
-	}	
-	printf("exit success count:%d\n",c);
-	printf("howdy nerds\n");
-	int i =0;
-	while(true){
-		++i;	
-		if(i>10000){
-			break;
-		}	
-	}
-	lolth_finish();
-
+	io_test(0);
 	return 0;
 }

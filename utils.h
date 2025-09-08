@@ -139,6 +139,7 @@ template <typename T>void arena_qd(Arena * arena, T* v){
 #define tmp_free(ptr) arena_free(&temporary_allocator, ptr)
 #define tmp_reset() arena_reset(&temporary_allocator)
 #define tmp_init() temporary_allocator = *arena_create()
+
 #ifndef CTILS_IMPLEMENTATION
 extern Arena temporary_allocator;
 #endif
