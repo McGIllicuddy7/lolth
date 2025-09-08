@@ -16,16 +16,19 @@ typedef struct {
 volatile atomic_bool threads_should_continue = false;
 volatile atomic_bool valid_rt = false;
 #define TASK_COUNT (16000)
-#define THREAD_COUNT 16
+#define THREAD_COUNT_MAX 16
+size_t THREAD_COUNT= 4;
 Task tasks [TASK_COUNT] = {0};
 _Thread_local long current_task =0;
 _Thread_local long prev_running =-1;
 _Thread_local long thread_id =0;
 pthread_mutex_t task_lock;
-pthread_t threads[THREAD_COUNT-1];
-jmp_buf tsaves[THREAD_COUNT-1];
-atomic_bool ready_to_finish[THREAD_COUNT-1] = {0};
+pthread_t threads[THREAD_COUNT_MAX-1];
+jmp_buf tsaves[THREAD_COUNT_MAX-1];
+atomic_bool ready_to_finish[THREAD_COUNT_MAX-1] = {0};
+#ifdef __linux__
 extern void usleep(long);
+#endif
 extern int fileno(FILE * f);
 Task * get_current_task(){
 	return &tasks[current_task];
@@ -169,11 +172,17 @@ void lolth_init(){
 	tasks[0].valid = true;
 	tasks[0].running = true;
 	threads_should_continue = true;
+	THREAD_COUNT = sysconf(_SC_NPROCESSORS_ONLN);
+	printf("thread_count:%zu\n", THREAD_COUNT);
+	if(THREAD_COUNT>THREAD_COUNT_MAX){
+		THREAD_COUNT = THREAD_COUNT_MAX;
+	}
 	for(int i =1; i<THREAD_COUNT; i++){
 		tasks[i].valid = true;
 		tasks[i].running = true;
 		pthread_create(&threads[i-1],0, thread_loop,(void*)(size_t)i);
 	}
+
 	valid_rt = true;
 	pthread_mutex_unlock(&task_lock);
 }
@@ -277,6 +286,19 @@ void context_gc(){
 }
 
 #ifdef __x86_64__
+#ifdef __MACH__
+__asm(
+	".intel_syntax noprefix\n"
+	".global _task_spawn_asm\n"
+	".extern _task_spawn_thunk\n"
+	"_task_spawn_asm:\n"
+	"	mov rsp, rdi\n"
+	"	mov rbp, rdi\n"
+	"       call _task_spawn_thunk\n"	
+	"       ret\n"
+	".att_syntax prefix\n"
+);
+#else
 __asm(
 	".intel_syntax noprefix\n"
 	".global task_spawn_asm\n"
@@ -288,6 +310,8 @@ __asm(
 	"       ret\n"
 	".att_syntax prefix\n"
 );
+
+#endif
 #else
 __asm(
 	"_task_spawn_asm:\n"

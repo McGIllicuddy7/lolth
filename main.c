@@ -9,8 +9,8 @@
 #include <stdatomic.h>
 atomic_int c = 0;
 void test(void * arg){	
-	for(int i =0; i<10; i++){
-		printf("testing %d\n",i);
+	for(int i =0; i<1000; i++){
+//		printf("testing %d\n",i);
 		c++;
 		yield();
 	}
@@ -30,6 +30,15 @@ void io_test(void * ptr){
 }
 
 int main(){
-	io_test(0);
+	lolth_init();
+	TaskHandle h[10];
+	for(int i =0; i<10; i++){
+		h[i] = spawn(test_spawn,0);
+	}
+	for(int i =0; i<10; i++){
+		lolth_await(h[i]);
+	}
+	printf("done, count:%d\n",c);
+	lolth_finish();
 	return 0;
 }
