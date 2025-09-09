@@ -13,7 +13,11 @@
 #include <sys/time.h>
 #include <stdint.h>
 #include <math.h>
+#if defined(__unix__) || defined(__MACH__)
 #include <pthread.h>
+#else 
+#include <Windows.h>
+#endif 
 #include <signal.h>
 
 /*
@@ -66,6 +70,13 @@ typedef double f64;
 typedef float f32;
 typedef char * cstr;
 typedef void * void_ptr;
+/*
+Mutexes
+*/
+
+/*
+ Threads
+ */
 #ifdef __cplusplus
 #include <type_traits>
 #define typeof(T) decltype(T)

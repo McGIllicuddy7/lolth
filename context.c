@@ -6,7 +6,13 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#if defined(__unix__) || defined(__MACH__)
 #include <aio.h>
+#endif
+#ifdef WIN32
+#include <Windows.h>
+#endif
+
 typedef struct {
 	jmp_buf buf;
 	void * stack;
@@ -38,6 +44,7 @@ extern void task_spawn_asm(void * stack, void(*to_call)(void*), void* args);
 extern void scheduler(bool is_done);
 extern void context_gc();
 void task_spawn_thunk(void * stack, void(*to_call)(void*), void* args){
+	(void)stack;
 	pthread_mutex_lock(&task_lock);
 	if(prev_running != current_task){
 		tasks[prev_running].running =false;
@@ -120,9 +127,9 @@ void scheduler(bool is_done){
 	pthread_mutex_lock(&task_lock);
 	get_current_task()->valid = !is_done;
 	int to_jump_to =-1;
-	for(int j =1; j<TASK_COUNT+1; j++){
-		int i = (j+current_task)%TASK_COUNT;
-		if(i != thread_id && i<THREAD_COUNT){
+	for(size_t j =1; j<TASK_COUNT+1; j++){
+		long i = (j+current_task)%TASK_COUNT;
+		if(i != thread_id && i<(long)THREAD_COUNT){
 			continue;
 		}
 		if(tasks[i].valid&& (!tasks[i].running || i == current_task)){
@@ -177,7 +184,7 @@ void lolth_init(){
 	if(THREAD_COUNT>THREAD_COUNT_MAX){
 		THREAD_COUNT = THREAD_COUNT_MAX;
 	}
-	for(int i =1; i<THREAD_COUNT; i++){
+	for(size_t i =1; i<THREAD_COUNT; i++){
 		tasks[i].valid = true;
 		tasks[i].running = true;
 		pthread_create(&threads[i-1],0, thread_loop,(void*)(size_t)i);
@@ -192,14 +199,14 @@ void lolth_finish(){
 	bool done = false;
 	while(!done){
 		done = true;
-		for(int i =0; i<THREAD_COUNT-1; i++){
+		for(size_t i =0; i<THREAD_COUNT-1; i++){
 			if(!ready_to_finish[i]){
 				done = false;
 				break;
 			}
 		}
 	}
-	for(int i = 0; i<THREAD_COUNT-1; i++){
+	for(size_t i = 0; i<THREAD_COUNT-1; i++){
 		pthread_join(threads[i],0);
 	}	
 	valid_rt = false;
@@ -260,16 +267,13 @@ String lolth_read_to_string(Arena * arena, const char *fname){
 	out.arena = arena;
 	return out;
 }
-char lolth_getc(FILE * f){
-}
-String lolth_get_line(Arena * arena, FILE * f){
-
-}
-String lolth_get_until(Arena * arena, FILE * f, Str pat){	
-}
 void lolth_write_to_file(const char* fname, Str to_write){
+	FILE * f  = fopen(fname, "w");
+	lolth_write_str(f, to_write);
+	fclose(f);
 }
 void lolth_write_str(FILE * file, Str to_write){
+	lolth_write(file, to_write.items, to_write.length);
 }
 void context_gc(){
 	pthread_mutex_lock(&task_lock);
