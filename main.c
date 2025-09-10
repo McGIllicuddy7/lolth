@@ -5,9 +5,8 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include "context.h"
-#include <pthread.h>
-#include <stdatomic.h>
-atomic_int c = 0;
+
+int c = 0;
 void test(void * arg){	
 	for(int i =0; i<1000; i++){
 //		printf("testing %d\n",i);

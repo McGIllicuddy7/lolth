@@ -3,15 +3,20 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <stdatomic.h>
-#if defined(__unix__) || defined(__MACH__)
-#include <aio.h>
-#endif
+#include <stdbool.h>
+#include "utils.h"
 #ifdef WIN32
 #include <Windows.h>
+#define atomic_bool int
+#define _Thread_local __declspec( thread )
+#else
+#include <stdatomic.h>
+#include <unistd.h>
+#include <pthread.h>
+#include <aio.h>
 #endif
+
+
 
 typedef struct {
 	jmp_buf buf;
@@ -28,8 +33,8 @@ Task tasks [TASK_COUNT] = {0};
 _Thread_local long current_task =0;
 _Thread_local long prev_running =-1;
 _Thread_local long thread_id =0;
-pthread_mutex_t task_lock;
-pthread_t threads[THREAD_COUNT_MAX-1];
+Mutex_t task_lock;
+Mutex_t threads[THREAD_COUNT_MAX-1];
 jmp_buf tsaves[THREAD_COUNT_MAX-1];
 atomic_bool ready_to_finish[THREAD_COUNT_MAX-1] = {0};
 #ifdef __linux__
@@ -70,7 +75,7 @@ TaskHandle spawn(void (*to_call)(void*),void * args){
 	void * stack = malloc(8000);
 	Task * cur = get_current_task();	
 	long tsk = -1;
-	pthread_mutex_lock(&task_lock);	
+	mutex_lock(&task_lock);	
 	for(int i =0; i<TASK_COUNT; i++){
 		if(!tasks[i].valid){
 			tasks[i].valid = true;
@@ -88,16 +93,16 @@ TaskHandle spawn(void (*to_call)(void*),void * args){
 	}
 	prev_running = current_task;
 	current_task = tsk;	
-	pthread_mutex_unlock(&task_lock);
+	mutex_unlock(&task_lock);
 	if(!setjmp(cur->buf)){
-		task_spawn_asm(stack+8000, to_call, args);
+		task_spawn_asm((char*)stack+8000, to_call, args);
 	}	
-	pthread_mutex_lock(&task_lock);
+	mutex_lock(&task_lock);
 	if(prev_running != current_task){
 		tasks[prev_running].running =false;
 		prev_running = -1;
 	}
-	pthread_mutex_unlock(&task_lock);
+	mutex_unlock(&task_lock);
 	return tsk;
 }
 
@@ -105,12 +110,12 @@ void task_switch(Task*from, Task* to){
 	if(!setjmp(from->buf)){
 		longjmp(to->buf, 0);
 	}
-	pthread_mutex_lock(&task_lock);
+	mutex_lock(&task_lock);
 	if(prev_running != current_task){
 		tasks[prev_running].running =false;
 		prev_running = -1;
 	}
-	pthread_mutex_unlock(&task_lock);
+	mutex_unlock(&task_lock);
 	return;
 }
 
@@ -171,15 +176,21 @@ void* thread_loop(void*args){
 }
 
 void lolth_init(){	
-	pthread_mutex_init(&task_lock,0);
+	mutex_create(&task_lock);
 	for(int i =0; i<TASK_COUNT; i++){
 		tasks[i].valid = false;
 	}
-	pthread_mutex_lock(&task_lock);
+	mutex_lock(&task_lock);
 	tasks[0].valid = true;
 	tasks[0].running = true;
 	threads_should_continue = true;
+#ifdef WIN32
+	SYSTEM_INFO sys;
+	GetSystemInfo(&sys);
+	THREAD_COUNT = sys.dwNumberOfProcessors;
+#else
 	THREAD_COUNT = sysconf(_SC_NPROCESSORS_ONLN);
+#endif
 	printf("thread_count:%zu\n", THREAD_COUNT);
 	if(THREAD_COUNT>THREAD_COUNT_MAX){
 		THREAD_COUNT = THREAD_COUNT_MAX;
@@ -191,7 +202,7 @@ void lolth_init(){
 	}
 
 	valid_rt = true;
-	pthread_mutex_unlock(&task_lock);
+	mutex_unlock(&task_lock);
 }
 
 void lolth_finish(){
@@ -222,6 +233,9 @@ void lolth_await(TaskHandle handle){
 }
 
 size_t lolth_read(FILE * file, char * buf, size_t count){
+#ifdef WIN32
+	return 0;
+#else
 	struct aiocb reader;
 	memset(&reader, 0, sizeof(reader));
 	reader.aio_buf= buf;
@@ -234,9 +248,13 @@ size_t lolth_read(FILE * file, char * buf, size_t count){
 		yield();
 	}
 	return aio_return(&reader);
+#endif
 }
 
 size_t lolth_write(FILE * file, char * buf, size_t count){
+#ifdef WIN32
+	return 0;
+#else 
 	struct aiocb reader;
 	memset(&reader, 0, sizeof(reader));
 	reader.aio_buf= buf;
@@ -249,6 +267,7 @@ size_t lolth_write(FILE * file, char * buf, size_t count){
 		yield();
 	}
 	return aio_return(&reader);
+#endif
 }
 
 String lolth_read_to_string(Arena * arena, const char *fname){
@@ -276,7 +295,7 @@ void lolth_write_str(FILE * file, Str to_write){
 	lolth_write(file, to_write.items, to_write.length);
 }
 void context_gc(){
-	pthread_mutex_lock(&task_lock);
+	mutex_lock(&task_lock);
 	for(int i =THREAD_COUNT; i<TASK_COUNT; i++){
 		if(!tasks[i].valid && !tasks[i].running){
 			if(!tasks[i].stack){
@@ -286,7 +305,7 @@ void context_gc(){
 			tasks[i].stack = 0;
 		}
 	}
-	pthread_mutex_unlock(&task_lock);
+	mutex_unlock(&task_lock);
 }
 
 #ifdef __x86_64__
@@ -314,9 +333,9 @@ __asm(
 	"       ret\n"
 	".att_syntax prefix\n"
 );
-
 #endif
 #else
+#ifndef WIN32
 __asm(
 	"_task_spawn_asm:\n"
 	"	mov sp, x0\n"
@@ -324,6 +343,17 @@ __asm(
 	"       call task_spawn_thunk\n"	
 	"       ret\n"
 );
+#else
+void __declspec(naked) task_spawn_asm(void* stack, void(*to_call)(void*), void* args) {
+	__asm {
+		mov esp,edi
+		mov ebp, edi
+		call task_spawn_thunk
+		ret
+	}
+}
 #endif
+#endif
+
 
 

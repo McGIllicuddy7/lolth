@@ -10,7 +10,7 @@
 #include <stdarg.h>
 #include <assert.h>
 #include <wchar.h>
-#include <sys/time.h>
+#include <time.h>
 #include <stdint.h>
 #include <math.h>
 #if defined(__unix__) || defined(__MACH__)
@@ -27,7 +27,9 @@ CTILS_STATIC
 void no_op_void(void*);
 #define STRINGIFY1(S) #S 
 #define STRINGIFY(S) STRINGIFY1(S)
+#ifdef __unix__
 #define CONSTRUCTED(Type, name, fn, ...) Type name; __attribute__((constructor)) static void construct__##name__##fn () { name = fn(VA_ARGS);}
+#endif
 CTILS_STATIC
 void * debug_alloc(size_t count, size_t size);
 
@@ -60,12 +62,10 @@ typedef int8_t i8;
 typedef int16_t i16;
 typedef int32_t i32;
 typedef int64_t i64;
-typedef __int128_t i128;
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef uint64_t u64;
-typedef __uint128_t u128;
 typedef double f64;
 typedef float f32;
 typedef char * cstr;
@@ -73,7 +73,19 @@ typedef void * void_ptr;
 /*
 Mutexes
 */
-
+#if defined(__unix__) || defined(__MACH__)
+typedef struct {
+	pthread_mutex_t mut;
+}Mutex_t;
+#else 
+typedef struct {
+	CRITICAL_SECTION mut;
+}Mutex_t;
+#endif
+CTILS_STATIC void mutex_create(Mutex_t * mut);
+CTILS_STATIC void mutex_destroy(Mutex_t* mut);
+CTILS_STATIC void mutex_lock(Mutex_t* mut);
+CTILS_STATIC void mutex_unlock(Mutex_t* mut);
 /*
  Threads
  */
@@ -97,7 +109,7 @@ typedef struct ArenaDestructor{
 	
 } ArenaDestructor;
 typedef struct Arena{
-	pthread_mutex_t lock;
+	Mutex_t lock;
 	char* buffer;
 	char* next_ptr;
 	char*end;
@@ -202,15 +214,13 @@ template<typename T> struct Vec{T * items; size_t length; size_t capacity; Arena
 enable_vec_type(void)
 enable_vec_type(Byte)
 enable_vec_type(i8)
-enable_vec_type(i16)
+enable_vec_type(i16) 
 enable_vec_type(i32)
 enable_vec_type(i64)
-enable_vec_type(i128)
 enable_vec_type(u8)
 enable_vec_type(u16)
 enable_vec_type(u32)
 enable_vec_type(u64)
-enable_vec_type(u128)
 enable_vec_type(f32)
 enable_vec_type(f64)
 enable_vec_type(cstr)
@@ -444,6 +454,7 @@ CTILS_STATIC
 size_t hash_string(String str);
 CTILS_STATIC
 size_t hash_cstring(const char * str);
+#define UNUSED 
 /*
 Hashtable
 */
@@ -463,7 +474,7 @@ typedef struct{\
 	void (*not_key)(T*);\
 	void (*not_value)(U*);\
 }T##U##HashTable;\
-static __attribute((unused)) T##U##HashTable * T##U##HashTable_create(size_t size,size_t (*hash_func)(T),bool (*eq_func)(T,T), void (*tdestructor)(T *), void (*udestructor)(U*)){\
+static UNUSED T##U##HashTable * T##U##HashTable_create(size_t size,size_t (*hash_func)(T),bool (*eq_func)(T,T), void (*tdestructor)(T *), void (*udestructor)(U*)){\
 	T##U##HashTable * out = (T##U##HashTable *)global_alloc(1, sizeof(T##U##HashTable));\
 	out->Table= (T##U##KeyValuePairVec *)global_alloc(1,sizeof(T##U##KeyValuePairVec)*size);\
 	out->TableSize = size;\
@@ -477,7 +488,7 @@ static __attribute((unused)) T##U##HashTable * T##U##HashTable_create(size_t siz
 	}\
 	return out;\
 }\
-static __attribute((unused)) void T##U##HashTable_v_resize(T##U##HashTable * table, size_t new_size){\
+static UNUSED void T##U##HashTable_v_resize(T##U##HashTable * table, size_t new_size){\
 	T##U##KeyValuePairVec* new_table = (T##U##KeyValuePairVec *)global_alloc(8,new_size);\
 	size_t i;\
 	for(i =0; i<new_size; i++){\
@@ -501,7 +512,7 @@ static __attribute((unused)) void T##U##HashTable_v_resize(T##U##HashTable * tab
 	}\
     global_free(old);\
 }\
-static __attribute((unused)) U* T##U##HashTable_find(T##U##HashTable* table, T key){\
+static UNUSED U* T##U##HashTable_find(T##U##HashTable* table, T key){\
 	size_t hashval = table->hash_func(key);\
 	size_t hash = hashval%table->TableSize;\
 	size_t i;\
@@ -513,7 +524,7 @@ static __attribute((unused)) U* T##U##HashTable_find(T##U##HashTable* table, T k
 	}\
 	return nil;\
 }\
-static __attribute((unused)) T##U##KeyValuePair* T##U##HashTable_find_kv(T##U##HashTable* table, T key){\
+static UNUSED T##U##KeyValuePair* T##U##HashTable_find_kv(T##U##HashTable* table, T key){\
 	if(table->TableSize == 0){\
 		return 0;\
 	}\
@@ -528,7 +539,7 @@ static __attribute((unused)) T##U##KeyValuePair* T##U##HashTable_find_kv(T##U##H
 	}\
 	return nil;\
 }\
-static __attribute((unused)) void T##U##HashTable_insert(T##U##HashTable* table, T key, U value){\
+static UNUSED void T##U##HashTable_insert(T##U##HashTable* table, T key, U value){\
 	size_t hashval = table->hash_func(key);\
 	size_t hash = hashval%table->TableSize;\
 	T##U##KeyValuePair pair = (T##U##KeyValuePair){.key = key,.value = value};\
@@ -548,7 +559,7 @@ static __attribute((unused)) void T##U##HashTable_insert(T##U##HashTable* table,
         table->Table[hash] = tmp;\
     }\
 }\
-static __attribute((unused)) bool T##U##HashTable_contains(T##U##HashTable * table, T key){\
+static UNUSED bool T##U##HashTable_contains(T##U##HashTable * table, T key){\
 	size_t hashval = table->hash_func(key);\
 	size_t hash = hashval%table->TableSize;\
     int idx = -1;\
@@ -561,7 +572,7 @@ static __attribute((unused)) bool T##U##HashTable_contains(T##U##HashTable * tab
     }\
     return idx != -1;\
 }\
-static __attribute((unused)) void T##U##HashTable_remove(T##U##HashTable * table, T key){\
+static UNUSED void T##U##HashTable_remove(T##U##HashTable * table, T key){\
     size_t hashval = table->hash_func(key);\
 	size_t hash = hashval%table->TableSize;\
     int idx = -1;\
@@ -578,7 +589,7 @@ static __attribute((unused)) void T##U##HashTable_remove(T##U##HashTable * table
         v_remove(table->Table[hash], idx);\
     }\
 }\
-static __attribute((unused)) void T##U##HashTable_unmake(T##U##HashTable * table){\
+static UNUSED void T##U##HashTable_unmake(T##U##HashTable * table){\
 size_t i;\
 size_t j;\
 	for(i =0; i<table->TableSize; i++){\
@@ -591,7 +602,7 @@ size_t j;\
 	global_free(table->Table);\
 	global_free(table);\
 }\
-static __attribute((unused)) T##U##HashTable * T##U##HashTable_construct_from_list(T##U##KeyValuePair * pairs, size_t count,size_t (*hash_func)(T),bool (*eq_func)(T,T)){\
+static UNUSED T##U##HashTable * T##U##HashTable_construct_from_list(T##U##KeyValuePair * pairs, size_t count,size_t (*hash_func)(T),bool (*eq_func)(T,T)){\
 	T##U##HashTable* tmp = T##U##HashTable_create(count,hash_func, eq_func, (void (*)(T *))no_op_void, (void(*)(U*))no_op_void);\
 	size_t i;\
 	for(i =0; i<count; i++){\
@@ -600,7 +611,7 @@ static __attribute((unused)) T##U##HashTable * T##U##HashTable_construct_from_li
 	return tmp;\
 }
 
-#define CONSTRUCT_HASHTABLE(T, name, hash_func, eq_func,...) CONSTRUCTED(T##HashTable*, name, T##HashTable_construct_from_list, (T##KeyValuePair[]){VA_ARGS}, sizeof((T##KeyValuePair[]){args})/(sizeof(T##KeyValuePair)), hash_func, eq_func)
+//#define CONSTRUCT_HASHTABLE(T, name, hash_func, eq_func,...) CONSTRUCTED(T##HashTable*, name, T##HashTable_construct_from_list, (T##KeyValuePair[]){VA_ARGS}, sizeof((T##KeyValuePair[]){args})/(sizeof(T##KeyValuePair)), hash_func, eq_func)
 enable_hash_type(void_ptr, void_ptr)
 
 /*
@@ -712,10 +723,41 @@ Implementation
 void register_arena(Arena * arena);
 void deregister_arena(Arena * arena);
 #endif
+#ifndef WIN32
 #include <unistd.h>
+#endif
 static int alloc_count = 0;
 static int global_free_count =0;
-
+/*
+Mutex stuff
+*/
+CTILS_STATIC void mutex_create(Mutex_t * mut) {
+#ifdef WIN32
+	InitializeCriticalSection(&mut->mut);
+#else
+	pthread_mutex_create(&mut->mut, 0);
+#endif
+}
+CTILS_STATIC void mutex_lock(Mutex_t* mtx) {
+#ifdef WIN32
+	EnterCriticalSection(&mtx->mut);
+#else
+	pthread_mutex_lock(&mtx->mut);
+#endif
+}
+CTILS_STATIC void mutex_unlock(Mutex_t* mtx) {
+	LeaveCriticalSection(&mtx->mut);
+#ifdef WIN32
+#else 
+	pthread_mutex_unlock(&mtx->mut);
+#endif
+}
+CTILS_STATIC void mutex_destroy(Mutex_t* mtx) {
+#ifdef WIN32
+#else 
+	pthread_mutex_destroy(&mtx->mut);
+#endif
+}
 CTILS_STATIC
 void * debug_alloc(size_t count, size_t size){
 	alloc_count++;
@@ -801,8 +843,8 @@ Arena * arena_create(void){
     struct Arena * next = 0;
     Arena * out = (Arena*)global_alloc(1,sizeof(Arena));
 	out->destructor_queue =0;
-	pthread_mutex_t lck;
-	pthread_mutex_init(&lck,0);
+	Mutex_t lck;
+	mutex_create(&lck);
     *out = (Arena){lck,buffer, next_ptr, end, previous_allocation, next, 0,0,0};
 	#ifdef ARENA_REGISTER
 	register_arena(out);
@@ -821,8 +863,8 @@ Arena * arena_create_sized(size_t reqsize){
     char * end = buffer+size;
     char * previous_allocation = 0;
     struct Arena * next = 0;
-	pthread_mutex_t lck;
-	pthread_mutex_init(&lck,0);
+	Mutex_t lck;
+	mutex_create(&lck);
     Arena * out = (Arena*)global_alloc(1,sizeof(Arena));
     *out = (Arena){lck,buffer, next_ptr, end, previous_allocation, next,0,0,0};
 	out->destructor_queue =0;
@@ -853,7 +895,7 @@ void arena_destroy(Arena * arena){
 	#endif
     global_free(arena->buffer);
     arena_destroy(arena->next);
-	pthread_mutex_destroy(&arena->lock);
+	mutex_destroy(&arena->lock);
     global_free(arena);
 }
 
@@ -862,7 +904,7 @@ void * arena_alloc(Arena * arena, size_t size){
     if(!arena){
         return global_alloc(1,size);
     }
-	pthread_mutex_lock(&arena->lock);	
+	mutex_lock(&arena->lock);	
 	
     size_t act_sz = size+(16-size%16);
 	if(size >= 16 && size%16==0){
@@ -874,16 +916,16 @@ void * arena_alloc(Arena * arena, size_t size){
             arena->next = arena_create_sized(size);
         }
         if (arena->next){
-			pthread_mutex_unlock(&arena->lock);
+			mutex_unlock(&arena->lock);
             return arena_alloc(arena->next, size);
         } else{
-			pthread_mutex_unlock(&arena->lock);
+			mutex_unlock(&arena->lock);
             return NULL;
         }
     }
     arena->next_ptr += act_sz;
     arena->previous_allocation = previous;
-	pthread_mutex_unlock(&arena->lock);
+	mutex_unlock(&arena->lock);
     return previous;
 }
 CTILS_STATIC
@@ -891,21 +933,21 @@ void * arena_realloc(Arena * arena, void * ptr, size_t previous_size, size_t new
     if(!arena){
         return global_realloc(ptr,new_size);
     }
-	pthread_mutex_lock(&arena->lock);
+	mutex_lock(&arena->lock);
     if (arena->previous_allocation == ptr && ptr){
         arena->next_ptr = (char*)ptr;
     }
-	pthread_mutex_unlock(&arena->lock);
+	mutex_unlock(&arena->lock);
     void * out = arena_alloc(arena, new_size);
-	pthread_mutex_lock(&arena->lock);
+	mutex_lock(&arena->lock);
     memmove(out, ptr, previous_size);
-	pthread_mutex_unlock(&arena->lock);
+	mutex_unlock(&arena->lock);
     return out;
 }
 
 CTILS_STATIC
 void arena_reset(Arena * arena){
-	pthread_mutex_lock(&arena->lock);
+	mutex_lock(&arena->lock);
     arena_destroy(arena->next);
 	arena->next = 0;
     arena->next_ptr= arena->buffer;
@@ -922,7 +964,7 @@ void arena_reset(Arena * arena){
 		arena->destructor_queue = dest->next;
 	}
 	arena->destructor_queue = 0;
-	pthread_mutex_unlock(&arena->lock);
+	mutex_unlock(&arena->lock);
 }
 
 CTILS_STATIC
