@@ -33,8 +33,8 @@ Task tasks [TASK_COUNT] = {0};
 _Thread_local long current_task =0;
 _Thread_local long prev_running =-1;
 _Thread_local long thread_id =0;
-Mutex_t task_lock;
-Mutex_t threads[THREAD_COUNT_MAX-1];
+Mutex task_lock;
+Thread threads[THREAD_COUNT_MAX-1];
 jmp_buf tsaves[THREAD_COUNT_MAX-1];
 atomic_bool ready_to_finish[THREAD_COUNT_MAX-1] = {0};
 #ifdef __linux__
@@ -50,12 +50,12 @@ extern void scheduler(bool is_done);
 extern void context_gc();
 void task_spawn_thunk(void * stack, void(*to_call)(void*), void* args){
 	(void)stack;
-	pthread_mutex_lock(&task_lock);
+	mutex_lock(&task_lock);
 	if(prev_running != current_task){
 		tasks[prev_running].running =false;
 		prev_running = -1;
 	}
-	pthread_mutex_unlock(&task_lock);
+	mutex_unlock(&task_lock);
 	to_call(args);
 	scheduler(true);
 	assert(false);
@@ -129,7 +129,7 @@ void scheduler(bool is_done){
 		}
 	}
 	context_gc();
-	pthread_mutex_lock(&task_lock);
+	mutex_lock(&task_lock);
 	get_current_task()->valid = !is_done;
 	int to_jump_to =-1;
 	for(size_t j =1; j<TASK_COUNT+1; j++){
@@ -145,19 +145,19 @@ void scheduler(bool is_done){
 	}		
 	if(to_jump_to == -1){
 		if(thread_id != 0){
-			pthread_mutex_unlock(&task_lock);
+			mutex_unlock(&task_lock);
 			longjmp(tsaves[thread_id-1],0);
 		}
 	}
 	if(current_task == to_jump_to){
 		prev_running = current_task;
-		pthread_mutex_unlock(&task_lock);
+		mutex_unlock(&task_lock);
 		return;
 	}else{
 		long prev = current_task;
 		prev_running = prev;
 		current_task = to_jump_to;
-		pthread_mutex_unlock(&task_lock);
+		mutex_unlock(&task_lock);
 		task_switch(&tasks[prev],get_current_task());
 	}
 }
@@ -198,7 +198,7 @@ void lolth_init(){
 	for(size_t i =1; i<THREAD_COUNT; i++){
 		tasks[i].valid = true;
 		tasks[i].running = true;
-		pthread_create(&threads[i-1],0, thread_loop,(void*)(size_t)i);
+		thread_init(&threads[i-1], thread_loop,(void*)(size_t)i);
 	}
 
 	valid_rt = true;
@@ -218,7 +218,7 @@ void lolth_finish(){
 		}
 	}
 	for(size_t i = 0; i<THREAD_COUNT-1; i++){
-		pthread_join(threads[i],0);
+		thread_join(threads[i]);
 	}	
 	valid_rt = false;
 }
@@ -337,10 +337,11 @@ __asm(
 #else
 #ifndef WIN32
 __asm(
+	".global _task_spawn_asm\n"
 	"_task_spawn_asm:\n"
 	"	mov sp, x0\n"
-	"	mov bp, x0\n"
-	"       call task_spawn_thunk\n"	
+	"	mov fp, x0\n"
+	"       bl _task_spawn_thunk\n"	
 	"       ret\n"
 );
 #else

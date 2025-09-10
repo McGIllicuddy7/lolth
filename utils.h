@@ -15,8 +15,11 @@
 #include <math.h>
 #if defined(__unix__) || defined(__MACH__)
 #include <pthread.h>
+#include <sys/time.h>
+#define UNUSED  __attribute((unused))
 #else 
 #include <Windows.h>
+#define UNUSED
 #endif 
 #include <signal.h>
 
@@ -76,19 +79,33 @@ Mutexes
 #if defined(__unix__) || defined(__MACH__)
 typedef struct {
 	pthread_mutex_t mut;
-}Mutex_t;
+}Mutex;
 #else 
 typedef struct {
 	CRITICAL_SECTION mut;
-}Mutex_t;
+}Mutex;
 #endif
-CTILS_STATIC void mutex_create(Mutex_t * mut);
-CTILS_STATIC void mutex_destroy(Mutex_t* mut);
-CTILS_STATIC void mutex_lock(Mutex_t* mut);
-CTILS_STATIC void mutex_unlock(Mutex_t* mut);
+CTILS_STATIC void mutex_create(Mutex* mut);
+CTILS_STATIC void mutex_destroy(Mutex* mut);
+CTILS_STATIC void mutex_lock(Mutex* mut);
+CTILS_STATIC void mutex_unlock(Mutex* mut);
 /*
  Threads
  */
+#ifdef WIN32
+typedef struct {
+	HANDLE thread;
+} Thread;
+#else
+typedef struct{
+	pthread_t thread;
+}Thread;
+#endif
+CTILS_STATIC void thread_init(Thread * t, void*(*func)(void* args), void*);
+CTILS_STATIC void thread_join(Thread t);
+/*
+ * C++ compatibility
+*/
 #ifdef __cplusplus
 #include <type_traits>
 #define typeof(T) decltype(T)
@@ -109,7 +126,7 @@ typedef struct ArenaDestructor{
 	
 } ArenaDestructor;
 typedef struct Arena{
-	Mutex_t lock;
+	Mutex lock;
 	char* buffer;
 	char* next_ptr;
 	char*end;
@@ -454,7 +471,6 @@ CTILS_STATIC
 size_t hash_string(String str);
 CTILS_STATIC
 size_t hash_cstring(const char * str);
-#define UNUSED 
 /*
 Hashtable
 */
@@ -731,33 +747,56 @@ static int global_free_count =0;
 /*
 Mutex stuff
 */
-CTILS_STATIC void mutex_create(Mutex_t * mut) {
+CTILS_STATIC void mutex_create(Mutex * mut) {
 #ifdef WIN32
 	InitializeCriticalSection(&mut->mut);
 #else
-	pthread_mutex_create(&mut->mut, 0);
+	pthread_mutex_init(&mut->mut, 0);
 #endif
 }
-CTILS_STATIC void mutex_lock(Mutex_t* mtx) {
+CTILS_STATIC void mutex_lock(Mutex* mtx) {
 #ifdef WIN32
 	EnterCriticalSection(&mtx->mut);
 #else
 	pthread_mutex_lock(&mtx->mut);
 #endif
 }
-CTILS_STATIC void mutex_unlock(Mutex_t* mtx) {
-	LeaveCriticalSection(&mtx->mut);
+CTILS_STATIC void mutex_unlock(Mutex* mtx) {
 #ifdef WIN32
+	LeaveCriticalSection(&mtx->mut);
 #else 
 	pthread_mutex_unlock(&mtx->mut);
 #endif
 }
-CTILS_STATIC void mutex_destroy(Mutex_t* mtx) {
+CTILS_STATIC void mutex_destroy(Mutex* mtx) {
 #ifdef WIN32
 #else 
 	pthread_mutex_destroy(&mtx->mut);
 #endif
 }
+/*Thread Stuff 
+ *
+ */
+CTILS_STATIC void thread_init(Thread * t, void*(*func)(void* args), void* args){
+	#ifdef WIN32
+	t->thread = CreateThread(0,0,func,args,0,0);
+	#else
+	pthread_create(&t->thread, 0, func, args);
+	#endif
+}
+CTILS_STATIC void thread_join(Thread t){
+	#ifdef WIN32
+	WaitForSingleObject(t.handle,	INFINITE);
+	#else
+	pthread_join(t.thread,0);
+	#endif
+
+}
+
+
+/*
+ * Memory Stuff
+ */
 CTILS_STATIC
 void * debug_alloc(size_t count, size_t size){
 	alloc_count++;
@@ -843,7 +882,7 @@ Arena * arena_create(void){
     struct Arena * next = 0;
     Arena * out = (Arena*)global_alloc(1,sizeof(Arena));
 	out->destructor_queue =0;
-	Mutex_t lck;
+	Mutex lck;
 	mutex_create(&lck);
     *out = (Arena){lck,buffer, next_ptr, end, previous_allocation, next, 0,0,0};
 	#ifdef ARENA_REGISTER
@@ -863,7 +902,7 @@ Arena * arena_create_sized(size_t reqsize){
     char * end = buffer+size;
     char * previous_allocation = 0;
     struct Arena * next = 0;
-	Mutex_t lck;
+	Mutex lck;
 	mutex_create(&lck);
     Arena * out = (Arena*)global_alloc(1,sizeof(Arena));
     *out = (Arena){lck,buffer, next_ptr, end, previous_allocation, next,0,0,0};
