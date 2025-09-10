@@ -633,7 +633,9 @@ enable_hash_type(void_ptr, void_ptr)
 /*
 Utils
 */
-
+#ifdef WIN32
+CTILS_STATIC void usleep(long long count);
+#endif
 CTILS_STATIC
 long get_time_microseconds(void);
 
@@ -779,19 +781,20 @@ CTILS_STATIC void mutex_destroy(Mutex* mtx) {
  */
 CTILS_STATIC void thread_init(Thread * t, void*(*func)(void* args), void* args){
 	#ifdef WIN32
-	t->thread = CreateThread(0,0,func,args,0,0);
+	t->thread = CreateThread(0,0,(void*)func,args,0,0);
 	#else
 	pthread_create(&t->thread, 0, func, args);
 	#endif
 }
 CTILS_STATIC void thread_join(Thread t){
 	#ifdef WIN32
-	WaitForSingleObject(t.handle,	INFINITE);
+	WaitForSingleObject(t.thread,	INFINITE);
 	#else
 	pthread_join(t.thread,0);
 	#endif
 
 }
+
 
 
 /*
@@ -1129,12 +1132,18 @@ Utils
 #ifdef __linux__
 int fileno(FILE * file);
 #endif
-
+CTILS_STATIC void usleep(long long count) {
+	Sleep(count / 1000);
+}
 CTILS_STATIC
 long get_time_microseconds(void){
+#ifdef WIN32
+	return 0;
+#else
 	struct timeval tv;
 	gettimeofday(&tv,NULL);
 	return tv.tv_usec+tv.tv_sec*1000000;
+#endif
 }
 
 
@@ -1162,6 +1171,8 @@ void end_profile_print(const char * message){
 
 CTILS_STATIC
 int execute(const char ** strings){
+#ifdef WIN32
+#else
     if(strings == nil){
         return 1;
     }
@@ -1176,10 +1187,13 @@ int execute(const char ** strings){
         return s;
     }
     return 1;
+#endif
 }
 
 CTILS_STATIC
 int execute_fd(int f_out, int f_in, int f_er, const char ** strings){
+#ifdef WIN32
+#else
     if(strings == nil){
         return 1;
     }
@@ -1197,6 +1211,7 @@ int execute_fd(int f_out, int f_in, int f_er, const char ** strings){
         return s;
     }
     return 1;
+#endif
 }
 /* 
 Str stuff

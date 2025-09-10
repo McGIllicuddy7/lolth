@@ -27,7 +27,7 @@ typedef struct {
 volatile atomic_bool threads_should_continue = false;
 volatile atomic_bool valid_rt = false;
 #define TASK_COUNT (16000)
-#define THREAD_COUNT_MAX 16
+#define THREAD_COUNT_MAX 32
 size_t THREAD_COUNT= 4;
 Task tasks [TASK_COUNT] = {0};
 _Thread_local long current_task =0;

@@ -4,12 +4,13 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 #include "context.h"
 
-int c = 0;
+_Atomic(int) c = 0;
 void test(void * arg){	
 	for(int i =0; i<1000; i++){
-//		printf("testing %d\n",i);
+	printf("testing %d\n",i);
 		c++;
 		yield();
 	}
@@ -30,6 +31,7 @@ void io_test(void * ptr){
 
 int main(){
 	lolth_init();
+	printf("hello world\n");
 	TaskHandle h[10];
 	for(int i =0; i<10; i++){
 		h[i] = spawn(test_spawn,0);
