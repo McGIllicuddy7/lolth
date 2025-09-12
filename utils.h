@@ -1132,9 +1132,11 @@ Utils
 #ifdef __linux__
 int fileno(FILE * file);
 #endif
+#ifdef WIN32
 CTILS_STATIC void usleep(long long count) {
 	Sleep(count / 1000);
 }
+#endif
 CTILS_STATIC
 long get_time_microseconds(void){
 #ifdef WIN32
