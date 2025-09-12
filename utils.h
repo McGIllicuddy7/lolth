@@ -19,7 +19,7 @@
 #define UNUSED  __attribute((unused))
 #else 
 #include <Windows.h>
-#define UNUSED
+#define UNUSED  inline
 #endif 
 #include <signal.h>
 
@@ -252,12 +252,12 @@ enable_vec_type(void_ptr)
 #define tmp_make_with_cap(T, cap) (T##Vec){(T*)(arena_alloc(&temporary_allocator, cap*sizeof(T))), 0,(size_t)cap, &temporary_allocator}
 
 #ifdef __cplusplus
-#define clone(vec, arena) (typeof((vec))){memdup_destructors(arena,vec.items, vec.length), vec.length, vec.capacity}
+#define clone(T,vec, arena) (T##Vec){memdup_destructors(arena,vec.items, vec.length), vec.length, vec.capacity}
 #else
-#define clone(vec, arena) (typeof((vec))){memdup(arena,vec.items, vec.capacity*sizeof(vec.items[0])), vec.length, vec.capacity}
+#define clone(T,vec, arena) (T##Vec){memdup(arena,vec.items, vec.capacity*sizeof(vec.items[0])), vec.length, vec.capacity}
 #endif 
-
-#define v_swap(a, b) {typeof(a) v_swap_temporary_value = a; a =b; b = v_swap_temporary_value;}
+CTILS_STATIC void v_void_spawn(void * a, void * b);
+#define v_swap(a, b) {v_void_swap((void*)&(a), (void*)&(b))}
 #ifdef __cplusplus
 static bool arena_object_exists(Arena *arena, void * ptr){
 	ArenaDestructor *a = arena->destructor_queue;
@@ -329,9 +329,9 @@ template<typename T, typename U> void v_append(U& vec, T value){
     vec.length += other_len; } 
 #endif
 #define v_append_as_bytes(byte_vec, V)\
-	v_append_slice(byte_vec, &((typeof(V)[1]){V}), sizeof(V))
+	v_append_slice(byte_vec, (void*)&(V), sizeof(V))
 
-#define v_consume(vec) (typeof(vec.items[0])*)vector_consume((voidVec *)(&vec), sizeof(vec.items[0]))
+#define v_consume(vec) vector_consume((voidVec *)(&vec), sizeof(vec.items[0]))
 #define v_consume_type(vec,T) (T*)vector_consume((voidVec * )(&vec), sizeof(T))
 
 #define v_remove(vec, idx)\
@@ -687,52 +687,10 @@ NoiseOctave2d noise_octave_2d_new(double scale_divisor);
 CTILS_STATIC
 f64 perlin(NoiseOctave2d * self,f64 xbase, f64 ybase);
 
-/*
-Option
-*/
-#define enable_option_type(T)\
-typedef struct {\
-	bool is_valid;\
-	T value;\
-}Option##T;
-#define Some(v) {true,v}
-#define None {false}
-
-
 typedef struct Unit{
 	unsigned char _;
 }Unit;
-/*
-Iterators
-*/
-typedef struct Iterator{
-    void * data;
-    size_t idx;
-    size_t end;
-    size_t stride;
-    size_t value_offset;
-    void *(*next)(struct Iterator*);
-}Iterator;
-#define hack_offsetof(st, m) \
-    (size_t)&(((st)0)->m)
 
-#define NEXT(value,It) (value = (typeof(value))It.next(&It))
-#define ITER_VEC(v) make_vec_iterator(*(voidVec*)(&v), sizeof(v.items[0]))
-//#define ITER_HASHTABLE(v) make_hash_map_iter(v, sizeof(v->Table[0].items[0]), (size_t)&(typeof(*(v->Table->items)) *0->value)))
-#define ITER_HASHTABLE(v) make_hash_map_iter(v, sizeof(v->Table[0].items),(hack_offsetof(typeof(v->Table[0].items),value)))
-#define ITER_HASHTABLE_KV(v) make_hash_map_iter(v, sizeof(v->Table[0].items[0]), 0)
-
-CTILS_STATIC
-void * next_vec_iter(Iterator * iter);
-
-CTILS_STATIC
-Iterator make_vec_iterator(voidVec v,size_t stride);
-
-CTILS_STATIC
-void * next_hash_map_iter(Iterator * iter);
-
-CTILS_STATIC
-Iterator make_hash_map_iter(void * v, size_t stride, size_t offset);
 /*
 Implementation
 */
@@ -772,6 +730,7 @@ CTILS_STATIC void mutex_unlock(Mutex* mtx) {
 }
 CTILS_STATIC void mutex_destroy(Mutex* mtx) {
 #ifdef WIN32
+	DeleteCriticalSection(&mtx->mut);
 #else 
 	pthread_mutex_destroy(&mtx->mut);
 #endif
@@ -849,6 +808,13 @@ void * memdup(Arena* arena, void * ptr, size_t size){
 		memcpy(out, ptr, size);
 		return out;
 	}
+}
+CTILS_STATIC void v_void_swap(void * a, void * b){
+	voidVec *av = (voidVec *)a;
+	voidVec * bv = (voidVec *)b;
+	voidVec tmp = *av;
+	*av = *bv;
+	*bv = tmp;
 }
 /*
 Arena stuff
@@ -1174,6 +1140,9 @@ void end_profile_print(const char * message){
 CTILS_STATIC
 int execute(const char ** strings){
 #ifdef WIN32
+	(void)strings;
+	fprintf(stderr, "error function execute operation is not implemented on windows\n");
+	return -1;
 #else
     if(strings == nil){
         return 1;
@@ -1195,6 +1164,12 @@ int execute(const char ** strings){
 CTILS_STATIC
 int execute_fd(int f_out, int f_in, int f_er, const char ** strings){
 #ifdef WIN32
+	(void)f_out;
+	(void)f_in;
+	(void)f_er;
+	(void)strings;
+	fprintf(stderr, "error function execute_fd operation is not implemented on windows\n");
+	return -1;
 #else
     if(strings == nil){
         return 1;
@@ -1395,7 +1370,7 @@ void _strconcat(String * a, const char* b, size_t b_size){
 			int l = len(*a)-1;
 			v_resize((*a), len((*a))+strlen(b));
 			int l2 = strlen(b);
-			for(i=0; i<strlen(b); i++){
+			for(i=0; i<(int)strlen(b); i++){
 				(*a).items[l+i] = (str_type)(b[i]);
 			}
 			(*a).items[l+l2] = '\0';
@@ -1661,70 +1636,5 @@ f64 perlin(NoiseOctave2d * self,f64 xbase, f64 ybase){
     f64 value = interpolate(ix0, ix1, sy);
     return value;
 }
-/*
-Iterators
-*/
-CTILS_STATIC
-void * next_vec_iter(Iterator * iter){
-    if(iter->idx == iter->end){
-        return 0;
-    }
-    else{
-        void * nxt = (void*)((char *)iter->data+iter->idx*iter->stride);
-        iter->idx +=1;
-        return nxt;
-    }
-}
 
-CTILS_STATIC
-Iterator make_vec_iterator(voidVec v,size_t stride){
-    Iterator out;
-    out.data = v.items;
-    out.end = v.length;
-    out.idx =0;
-    out.stride = stride;
-    out.next= next_vec_iter;
-    return out;
-}
-
-CTILS_STATIC
-//typedef struct{ KeyValuePairVec *Table; 
-//size_t TableSize; size_t (*hash_func)(T); bool (*eq_func)(T,T);}TUHashTable;
-void * next_hash_map_iter(Iterator * iter){
-    voidVec* v = (voidVec*)iter->data;
-    if(v == (void*)iter->end){
-        return 0;
-    }
-    if(iter->idx == v->length){
-        if(v == (voidVec*)iter->end){
-            return 0;
-        }
-        while(iter->idx == v->length){
-            iter->idx = 0;
-            v ++;
-            void * old = iter->data;
-            iter->data = v;
-            assert(iter->data != old);
-            if(v == (voidVec*)iter->end){
-                return 0;
-            }
-        }
-    } 
-    void * out = (void*)((char*)v->items+iter->idx*iter->stride);
-    iter->idx = iter->idx+1;
-    return (void*)((char*)out+iter->value_offset);
-}
-
-CTILS_STATIC
-Iterator make_hash_map_iter(void * v, size_t stride, size_t offset){
-    void_ptrvoid_ptrHashTable* t = (void_ptrvoid_ptrHashTable*)v;
-    Iterator out;
-    out.data = t->Table;
-    out.end = (size_t)(t->Table+t->TableSize);
-    out.idx = 0;
-    out.next = next_hash_map_iter;
-    out.stride = stride;
-    out.value_offset = offset;
-    return out;
-}
 #endif
