@@ -67,9 +67,10 @@ REFLECT_VALUE const Type cstrINFO = (const Type){.info = TypeString, .size = siz
 typedef struct {
 	const Type * info;
 	size_t indirection_count;
+	size_t count;
 	void * ptr;
 }Reflection;
-#define REFLECT(T, V) (Reflection){.info =&T##INFO, .indirection_count = 0, .ptr = (void*)V}
+#define REFLECT(T, V) (Reflection){.info =&T##INFO, .indirection_count = 0, .ptr = (void*)(V), .count = 1}
 
 int reflect_get_int(Reflection a, int64_t * out);
 int reflect_get_uint(Reflection a, uint64_t * out);
@@ -85,3 +86,5 @@ int reflect_deref(Reflection a, Reflection * out);
 void reflect_serialize(Stream *s, Reflection r);
 void reflect_deserialize(Stream *stream, Reflection r);
 void debug_fprint(FILE * file,Reflection ref);
+uint64_t reflect_array_size(Reflection ref);
+int reflect_is_array(Reflection ref);
