@@ -248,19 +248,31 @@ void reflect_serialize(Stream *stream, Reflection r){
 		stream_write_u64(stream, 1);
 	 }
 	 if(rf.info->info== TypeInt){
-		int64_t s = 0;
-	 	reflect_get_int(rf, &s);
-	 	stream_write(stream, &s, sizeof(s));
+		if(reflect_is_array(rf)){
+			abort();
+		}else{
+			int64_t s = 0;
+	 		reflect_get_int(rf, &s);
+	 		stream_write(stream, &s, sizeof(s));
+		}
 
 	 }else if(rf.info->info == TypeUInt){
-		uint64_t s = 0;
-	 	reflect_get_uint(rf, &s);
-	 	stream_write(stream, &s, sizeof(s));
+		if(reflect_is_array(rf)){
+			abort();
+		}else{
+			uint64_t s = 0;
+	 		reflect_get_uint(rf, &s);
+	 		stream_write(stream, &s, sizeof(s));
+		}
 
 	 }else if(rf.info->info == TypeFloat){
-	 	double s = 0.0;
-	 	reflect_get_float(rf, &s);
-		stream_write(stream, &s, sizeof(s));	
+		if(reflect_is_array(rf)){
+			abort();
+		}else{
+	 		double s = 0.0;
+	 		reflect_get_float(rf, &s);
+			stream_write(stream, &s, sizeof(s));	
+		}
 	 }else if(rf.info->info == TypeString){
 	 	const char * s = 0;
 	 	reflect_get_string(rf, &s);
